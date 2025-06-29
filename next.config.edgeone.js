@@ -8,9 +8,22 @@ const nextConfig = {
   reactStrictMode: true,
   swcMinify: true,
 
-  // 为EdgeOne.ai配置静态导出
-  output: 'export',
-  trailingSlash: true,
+  // 优化构建以减少文件大小
+  experimental: {
+    // 排除大型依赖文件
+    outputFileTracingExcludes: {
+      '*': [
+        'node_modules/@swc/core-linux-x64-gnu',
+        'node_modules/@swc/core-linux-x64-musl',
+        'node_modules/@swc/core-darwin-x64',
+        'node_modules/@swc/core-darwin-arm64',
+        'node_modules/@swc/core-win32-x64-msvc',
+        'node_modules/@next/swc-*',
+        'node_modules/webpack/lib',
+        'node_modules/terser/lib',
+      ],
+    },
+  },
 
   // Uncoment to add domain whitelist
   images: {
@@ -24,10 +37,40 @@ const nextConfig = {
         hostname: '**',
       },
     ],
-    unoptimized: true,
   },
 
   webpack(config) {
+    // 禁用webpack缓存以减少文件大小
+    config.cache = false;
+
+    // 优化分包策略
+    config.optimization = {
+      ...config.optimization,
+      splitChunks: {
+        chunks: 'all',
+        cacheGroups: {
+          default: false,
+          vendors: false,
+          // 将大型库单独打包
+          vendor: {
+            name: 'vendor',
+            chunks: 'all',
+            test: /node_modules/,
+            priority: 20,
+          },
+          // 将公共代码单独打包
+          common: {
+            name: 'common',
+            minChunks: 2,
+            chunks: 'all',
+            priority: 10,
+            reuseExistingChunk: true,
+            enforce: true,
+          },
+        },
+      },
+    };
+
     // Grab the existing rule that handles SVG imports
     const fileLoaderRule = config.module.rules.find((rule) =>
       rule.test?.test?.('.svg')
@@ -60,5 +103,12 @@ const nextConfig = {
   },
 };
 
-// 为EdgeOne.ai禁用PWA，因为静态导出不支持
-module.exports = nextConfig;
+// 为EdgeOne.ai优化的配置，保留API路由功能但减少构建文件大小
+const withPWA = require('next-pwa')({
+  dest: 'public',
+  disable: process.env.NODE_ENV === 'development',
+  register: true,
+  skipWaiting: true,
+});
+
+module.exports = withPWA(nextConfig);
